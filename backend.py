@@ -549,7 +549,7 @@ class Handler(BaseHTTPRequestHandler):
         except RuntimeError as exc:
             self.send_json(500, {'error': str(exc) or '操作失败'})
         except subprocess.TimeoutExpired:
-            self.send_json(500, {'error': '相机服务操作超时'})
+            self.send_json(500, {'error': '操作超时，请检查服务状态'})
         except OSError:
             self.send_json(500, {'error': '无法保存任务设置'})
 

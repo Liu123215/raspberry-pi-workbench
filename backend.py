@@ -493,6 +493,7 @@ class Server(ThreadingHTTPServer):
 
 if __name__ == '__main__':
     server = Server(('0.0.0.0', 8092), Handler)
+    fan_control.start_fan_controller()
     threading.Thread(target=worker, daemon=True).start()
     print('Pi Workbench listening on port 8092', flush=True)
     try:

@@ -6,6 +6,7 @@ venv/
 .env.*
 access-token
 tasks.json
+fan-settings.json
 update-status.json
 *.jpg
 *.jpeg

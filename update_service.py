@@ -114,17 +114,31 @@ def _system_unit_active():
 def _run_system(args, timeout):
     # A separate user service is not killed if the web server itself restarts.
     unit = 'pi-workbench-system-update-' + uuid.uuid4().hex[:12]
+    DATA.mkdir(parents=True, exist_ok=True, mode=0o700)
+    log_path = DATA / (unit + '.log')
+    fd = os.open(log_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+    os.close(fd)
     command = ['systemd-run', '--user', '--wait', '--quiet', '--collect', '--unit=' + unit,
-               '--property=StandardOutput=journal', '--property=StandardError=journal'] + args
+               '--property=StandardOutput=append:' + str(log_path),
+               '--property=StandardError=append:' + str(log_path)] + args
     try:
         code, output = _run(command, timeout)
     except RuntimeError:
-        raise RuntimeError('操作等待超时，后台任务可能仍在运行；请查看系统状态') from None
+        # The transient service may still be writing: preserve the log.
+        raise RuntimeError('操作等待超时，后台任务可能仍在运行；日志：' + str(log_path)) from None
+    except OSError as exc:
+        log_path.unlink(missing_ok=True)
+        raise RuntimeError('无法启动系统更新服务：' + str(exc)) from None
     try:
-        _, log = _run(['journalctl', '--user', '-u', unit + '.service', '--no-pager', '-n', '150'], 10)
-        return code, (output + '\n' + log)[-MAX_LOG:]
-    except (OSError, RuntimeError):
-        return code, output
+        with log_path.open('rb') as stream:
+            stream.seek(0, os.SEEK_END)
+            stream.seek(max(0, stream.tell() - MAX_LOG))
+            log = stream.read(MAX_LOG).decode('utf-8', errors='replace')
+    except OSError as exc:
+        raise RuntimeError('无法读取更新日志：' + str(exc)) from None
+    finally:
+        log_path.unlink(missing_ok=True)
+    return code, (output + '\n' + log)[-MAX_LOG:]
 
 
 def _system(action):

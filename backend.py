@@ -350,6 +350,29 @@ def status():
             'reboot_required': Path('/var/run/reboot-required').exists()}
 
 
+def diagnostics():
+    processes = []
+    try:
+        p = subprocess.run(['ps', '-eo', 'pid=,pcpu=,pmem=,comm=', '--sort=-pcpu'],
+                           capture_output=True, text=True, timeout=4, check=True)
+        for line in p.stdout.splitlines()[:8]:
+            fields = line.strip().split(None, 3)
+            if len(fields) == 4:
+                processes.append({'pid': int(fields[0]), 'cpu': float(fields[1]),
+                                  'memory': float(fields[2]), 'name': fields[3]})
+    except (OSError, ValueError, subprocess.SubprocessError):
+        pass
+    services = []
+    for label, unit in [('工作台', 'pi-workbench.service'), ('CCD 相机', 'ccd-camera.service')]:
+        try:
+            p = subprocess.run(['systemctl', '--user', 'is-active', unit], capture_output=True, text=True, timeout=2)
+            state = p.stdout.strip() or 'unknown'
+        except (OSError, subprocess.SubprocessError):
+            state = 'unknown'
+        services.append({'name': label, 'state': state})
+    return {'processes': processes, 'services': services}
+
+
 LOGIN = r'''<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>个人工作台 · 登录</title><style>body{margin:0;font:16px/1.6 system-ui,sans-serif;background:#f4f2ec;color:#29382f;display:grid;place-items:center;min-height:100vh}main{background:white;padding:32px;border-radius:16px;width:min(380px,calc(100vw - 64px));box-shadow:0 12px 40px #263e2c15}h1{font-size:24px}p{color:#667568}input{box-sizing:border-box;width:100%;padding:12px;border:1px solid #bac8ba;border-radius:8px;font:inherit}button{margin-top:15px;background:#405d4e;color:white;border:0;border-radius:8px;padding:12px 20px;font:inherit;cursor:pointer}#language{float:right;background:#edf3ed;color:#355b42;margin:0;font-size:14px;padding:8px 12px}</style><main><button id="language" type="button" aria-label="Switch language">English</button><h1 id="heading">树莓派个人工作台</h1><p id="description">请输入工作台访问码。</p><form method="get" action="/"><input id="access" name="token" aria-label="访问码" placeholder="访问码" required autocomplete="off"><button id="submit" type="submit">进入工作台</button></form></main><script>(()=>{let lang='zh';try{lang=localStorage.getItem('pi-workbench-language')||'zh'}catch{}const paint=()=>{const en=lang==='en';document.documentElement.lang=en?'en':'zh-CN';document.title=en?'Pi Workbench · Sign in':'个人工作台 · 登录';document.getElementById('heading').textContent=en?'Raspberry Pi Workbench':'树莓派个人工作台';document.getElementById('description').textContent=en?'Enter your workbench access code.':'请输入工作台访问码。';const input=document.getElementById('access');input.placeholder=en?'Access code':'访问码';input.setAttribute('aria-label',input.placeholder);document.getElementById('submit').textContent=en?'Open workbench':'进入工作台';document.getElementById('language').textContent=en?'中文':'English'};document.getElementById('language').addEventListener('click',()=>{lang=lang==='en'?'zh':'en';try{localStorage.setItem('pi-workbench-language',lang)}catch{}paint()});paint()})();</script></html>'''.encode('utf-8')
 
 
@@ -410,6 +433,8 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(200, status())
         elif parsed.path == '/api/network':
             self.send_json(200, network_details())
+        elif parsed.path == '/api/diagnostics':
+            self.send_json(200, diagnostics())
         elif parsed.path == '/api/fan':
             self.send_json(200, fan_control.read_fan())
         elif parsed.path == '/api/update':

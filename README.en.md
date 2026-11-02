@@ -7,6 +7,7 @@ A Raspberry Pi dashboard for device and network details, compatible fan control,
 ## Features
 
 - View CPU temperature, memory and storage usage, uptime, and the status of the separate camera service.
+- Start, restart, or stop the CCD camera service; stop an active recording first.
 - View interfaces, IPv4 and IPv6 addresses, gateways, MAC address, cumulative traffic, and current upload/download rates. Wi-Fi link rates and signal strength are shown when available. These values are not an internet bandwidth test.
 - View and control a compatible `pwm-fan`. Manual mode continuously maintains a target PWM setting and preserves it across workbench service restarts. The target is temporarily overridden to request full speed if the CPU reaches 70°C or the temperature cannot be read; the system's thermal protections remain enabled. You can return to automatic control.
 - Check and install system package updates and update the workbench from this repository.

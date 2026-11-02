@@ -345,7 +345,9 @@ def status():
         disk_data = {'total_bytes': None, 'free_bytes': None}
     return {'hostname': socket.gethostname(), 'uptime_seconds': uptime, 'cpu_temp_c': temp,
             'memory': {'total_bytes': memory.get('MemTotal'), 'available_bytes': memory.get('MemAvailable')},
-            'disk': disk_data, 'ip_addresses': addresses, 'camera_service': camera}
+            'disk': disk_data, 'ip_addresses': addresses, 'camera_service': camera,
+            'load_average': list(os.getloadavg()) if hasattr(os, 'getloadavg') else None,
+            'reboot_required': Path('/var/run/reboot-required').exists()}
 
 
 LOGIN = r'''<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>个人工作台 · 登录</title><style>body{margin:0;font:16px/1.6 system-ui,sans-serif;background:#f4f2ec;color:#29382f;display:grid;place-items:center;min-height:100vh}main{background:white;padding:32px;border-radius:16px;width:min(380px,calc(100vw - 64px));box-shadow:0 12px 40px #263e2c15}h1{font-size:24px}p{color:#667568}input{box-sizing:border-box;width:100%;padding:12px;border:1px solid #bac8ba;border-radius:8px;font:inherit}button{margin-top:15px;background:#405d4e;color:white;border:0;border-radius:8px;padding:12px 20px;font:inherit;cursor:pointer}#language{float:right;background:#edf3ed;color:#355b42;margin:0;font-size:14px;padding:8px 12px}</style><main><button id="language" type="button" aria-label="Switch language">English</button><h1 id="heading">树莓派个人工作台</h1><p id="description">请输入工作台访问码。</p><form method="get" action="/"><input id="access" name="token" aria-label="访问码" placeholder="访问码" required autocomplete="off"><button id="submit" type="submit">进入工作台</button></form></main><script>(()=>{let lang='zh';try{lang=localStorage.getItem('pi-workbench-language')||'zh'}catch{}const paint=()=>{const en=lang==='en';document.documentElement.lang=en?'en':'zh-CN';document.title=en?'Pi Workbench · Sign in':'个人工作台 · 登录';document.getElementById('heading').textContent=en?'Raspberry Pi Workbench':'树莓派个人工作台';document.getElementById('description').textContent=en?'Enter your workbench access code.':'请输入工作台访问码。';const input=document.getElementById('access');input.placeholder=en?'Access code':'访问码';input.setAttribute('aria-label',input.placeholder);document.getElementById('submit').textContent=en?'Open workbench':'进入工作台';document.getElementById('language').textContent=en?'中文':'English'};document.getElementById('language').addEventListener('click',()=>{lang=lang==='en'?'zh':'en';try{localStorage.setItem('pi-workbench-language',lang)}catch{}paint()});paint()})();</script></html>'''.encode('utf-8')
@@ -436,7 +438,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(401, {'error': '请先登录工作台'})
             return
         path = urlsplit(self.path).path
-        if path not in ('/api/tasks', '/api/fan', '/api/update'):
+        if path not in ('/api/tasks', '/api/fan', '/api/update', '/api/camera/service', '/api/camera/capture'):
             self.send_json(404, {'error': '页面不存在'})
             return
         origin = self.headers.get('Origin', '')
@@ -449,6 +451,26 @@ class Handler(BaseHTTPRequestHandler):
             if not 0 < length <= 8192:
                 raise ValueError('请求数据大小不正确')
             data = json.loads(self.rfile.read(length))
+            if path == '/api/camera/capture':
+                result, message = camera_shot()
+                self.send_json(200 if result == 'ok' else 500, {'ok': result == 'ok', 'error': '' if result == 'ok' else message})
+                return
+            if path == '/api/camera/service':
+                action = data.get('action')
+                if action not in ('start', 'restart', 'stop'):
+                    raise ValueError('不支持的相机操作')
+                if action != 'start':
+                    try:
+                        with urlopen('http://127.0.0.1:8091/api/status', timeout=2) as response:
+                            if json.loads(response.read(4096)).get('recording'):
+                                raise ValueError('相机正在录像，请先停止录像')
+                    except (OSError, json.JSONDecodeError):
+                        pass
+                process = subprocess.run(['systemctl', '--user', action, 'ccd-camera.service'], capture_output=True, text=True, timeout=12)
+                if process.returncode:
+                    raise RuntimeError((process.stderr or process.stdout or '相机服务操作失败')[:250])
+                self.send_json(200, {'ok': True, 'camera_service': action})
+                return
             if path == '/api/fan':
                 self.send_json(200, fan_control.set_fan(data))
                 return
@@ -482,6 +504,8 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(400, {'error': str(exc) or '任务设置格式不正确'})
         except RuntimeError as exc:
             self.send_json(500, {'error': str(exc) or '操作失败'})
+        except subprocess.TimeoutExpired:
+            self.send_json(500, {'error': '相机服务操作超时'})
         except OSError:
             self.send_json(500, {'error': '无法保存任务设置'})
 

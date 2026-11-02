@@ -178,6 +178,59 @@ def _run_system(args, timeout):
     return code, log
 
 
+def _evaluate_debian_sources(codename, lines):
+    """Check only release records whose origin is Debian or Debian-Security."""
+    if not re.fullmatch(r'[a-z0-9][a-z0-9-]*', codename or ''):
+        return '无法确认当前系统的 Debian 版本；为避免误升级，请先检查系统版本及软件源。'
+    releases = set()
+    incomplete = False
+    for line in lines:
+        stripped = line.strip()
+        if not stripped.startswith('release '):
+            continue
+        fields = {}
+        for part in stripped[len('release '):].split(','):
+            key, sep, value = part.strip().partition('=')
+            if sep:
+                fields[key.strip()] = value.strip()
+        if fields.get('o') not in ('Debian', 'Debian-Security'):
+            continue
+        name = fields.get('n', '').lower()
+        if not re.fullmatch(r'[a-z0-9][a-z0-9-]*', name):
+            incomplete = True
+            continue
+        base = re.sub(r'-(?:proposed-updates|backports-sloppy|backports|updates|security)$', '', name)
+        releases.add(base)
+    if incomplete or not releases:
+        return '无法确认 Debian 软件源版本；为避免误升级，请先检查软件源。'
+    mismatch = sorted(releases - {codename})
+    if mismatch:
+        return ('检测到不同 Debian 版本的软件源：' + '、'.join(mismatch) +
+                '（当前系统为 ' + codename + '）；已阻止系统更新，请检查软件源。')
+    return ''
+
+
+def _source_preflight():
+    try:
+        contents = Path('/etc/os-release').read_text(encoding='utf-8')
+        match = re.search(r'^VERSION_CODENAME\s*=\s*["\']?([a-z0-9][a-z0-9-]*)["\']?\s*$',
+                          contents, re.MULTILINE)
+        codename = match.group(1) if match else ''
+        env = os.environ.copy()
+        env['LC_ALL'] = 'C'
+        # Do not use the shortened UI log here: every release record matters.
+        with tempfile.TemporaryFile(mode='w+b') as output:
+            result = subprocess.run(['apt-cache', 'policy'], stdin=subprocess.DEVNULL,
+                                    stdout=output, stderr=subprocess.PIPE,
+                                    timeout=60, env=env, check=False)
+            if result.returncode:
+                return '无法检查 Debian 软件源；为避免误升级，请先检查软件源和 APT 状态。'
+            output.seek(0)
+            return _evaluate_debian_sources(codename, (line.decode('utf-8', errors='replace') for line in output))
+    except (OSError, subprocess.TimeoutExpired):
+        return '无法检查系统版本或 Debian 软件源；为避免误升级，请先检查系统及 APT 状态。'
+
+
 def _system(action):
     apt = ['sudo', '-n', 'env', 'DEBIAN_FRONTEND=noninteractive', 'LC_ALL=C', 'apt-get',
            '-o', 'DPkg::Lock::Timeout=20']
@@ -187,20 +240,30 @@ def _system(action):
         if code:
             _set('system', 'error', '刷新软件包列表失败，系统软件没有更新', output)
             return
+        warning = _source_preflight()
         _set('system', 'running', '正在检查可更新的软件包', output)
         code, result = _run_system(apt + ['-s', 'upgrade'], 300)
         if code:
-            _set('system', 'error', '检查可更新的软件包失败', result)
+            message = '检查可更新的软件包失败' + ('；' + warning if warning else '')
+            log = (warning + '\n\n' + result[:MAX_LOG - len(warning) - 2]) if warning else result
+            _set('system', 'error', message, log)
             return
         match = re.search(r'(\d+) upgraded,\s*(\d+) newly installed,\s*(\d+) to remove', result)
         message = ('可更新的软件包：' + match.group(1) + ' 个' if match
                    else '检查完成，请查看输出了解可更新的软件包')
+        if warning:
+            message += '；' + warning
+            result = warning + '\n\n' + result[:MAX_LOG - len(warning) - 2]
         _set('system', 'success', message, result)
     else:
         _set('system', 'running', '正在刷新软件包列表，随后安装更新')
         code, output = _run_system(apt + ['update'], 600)
         if code:
             _set('system', 'error', '刷新软件包列表失败；未开始安装更新', output)
+            return
+        warning = _source_preflight()
+        if warning:
+            _set('system', 'error', warning, warning + '\n\n' + output[:MAX_LOG - len(warning) - 2])
             return
         _set('system', 'running', '正在安装系统更新，请勿关闭或断电', output)
         code, output = _run_system(apt + ['-y', '-o', 'Dpkg::Options::=--force-confdef',

@@ -1,0 +1,10 @@
+#!/usr/bin/python3 -I
+"""Release reclaimable kernel caches; no user-supplied paths or commands."""
+import os
+import sys
+if os.geteuid() != 0 or len(sys.argv) != 1:
+    raise SystemExit('invalid invocation')
+os.sync()
+with open('/proc/sys/vm/drop_caches', 'w', encoding='ascii') as stream:
+    stream.write('3\n')
+

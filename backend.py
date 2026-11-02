@@ -31,6 +31,8 @@ LOCK = threading.Lock()
 WAKE = threading.Event()
 NETWORK_LOCK = threading.Lock()
 NETWORK_SAMPLES = {}
+MEMORY_CLEAN_LOCK = threading.Lock()
+LAST_MEMORY_CLEAN = 0.0
 DEFAULT = {
     'website': {'enabled': False, 'url': '', 'interval_seconds': 300, 'last_check': None,
                 'result': None, 'changed_at': None, 'message': '', 'history': []},
@@ -459,11 +461,12 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(404, {'error': '页面不存在'})
 
     def do_POST(self):
+        global LAST_MEMORY_CLEAN
         if not self.authorized():
             self.send_json(401, {'error': '请先登录工作台'})
             return
         path = urlsplit(self.path).path
-        if path not in ('/api/tasks', '/api/fan', '/api/update', '/api/camera/service', '/api/camera/capture'):
+        if path not in ('/api/tasks', '/api/fan', '/api/update', '/api/camera/service', '/api/camera/capture', '/api/memory/clear'):
             self.send_json(404, {'error': '页面不存在'})
             return
         origin = self.headers.get('Origin', '')
@@ -476,6 +479,22 @@ class Handler(BaseHTTPRequestHandler):
             if not 0 < length <= 8192:
                 raise ValueError('请求数据大小不正确')
             data = json.loads(self.rfile.read(length))
+            if path == '/api/memory/clear':
+                if not MEMORY_CLEAN_LOCK.acquire(blocking=False):
+                    raise ValueError('清理正在进行中')
+                try:
+                    if time.monotonic() - LAST_MEMORY_CLEAN < 30:
+                        raise ValueError('请等待 30 秒后再次清理')
+                    before = status()['memory']['available_bytes']
+                    result = subprocess.run(['sudo', '-n', '/usr/local/libexec/pi-workbench-memory'], capture_output=True, text=True, timeout=30)
+                    if result.returncode:
+                        raise RuntimeError('无法释放系统缓存，请检查清理助手权限')
+                    LAST_MEMORY_CLEAN = time.monotonic()
+                    after = status()['memory']['available_bytes']
+                    self.send_json(200, {'ok': True, 'before': before, 'after': after})
+                finally:
+                    MEMORY_CLEAN_LOCK.release()
+                return
             if path == '/api/camera/capture':
                 result, message = camera_shot()
                 self.send_json(200 if result == 'ok' else 500, {'ok': result == 'ok', 'error': '' if result == 'ok' else message})

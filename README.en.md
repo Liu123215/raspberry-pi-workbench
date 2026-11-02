@@ -10,6 +10,7 @@ A Raspberry Pi dashboard for device and network details, compatible fan control,
 - Start, restart, or stop the CCD camera service; stop an active recording first.
 - Take photos from the dashboard and view system load, reboot status, services, and resource-intensive processes.
 - Refresh a diagnostics view of key service states and the processes using the most CPU.
+- Manually release reclaimable system memory caches without closing programs or deleting user files.
 - View interfaces, IPv4 and IPv6 addresses, gateways, MAC address, cumulative traffic, and current upload/download rates. Wi-Fi link rates and signal strength are shown when available. These values are not an internet bandwidth test.
 - View and control a compatible `pwm-fan`. Manual mode continuously maintains a target PWM setting and preserves it across workbench service restarts. The target is temporarily overridden to request full speed if the CPU reaches 70°C or the temperature cannot be read; the system's thermal protections remain enabled. You can return to automatic control.
 - Check and install system package updates and update the workbench from this repository.
@@ -45,6 +46,8 @@ python3 backend.py
 ```
 
 To enable fan control, review `pi-workbench-fan` and the installer, then open another terminal and run `sudo sh install-fan-helper.sh` from the project directory. Installation requires your administrator password and grants the current user passwordless access only to the dedicated fan helper, not general passwordless sudo. Workbench self-updates do not replace the root-owned helper.
+
+To enable memory-cache release, review `pi-workbench-memory` and its installer, then run `sudo sh install-memory-helper.sh` from the project directory. This fixed operation releases reclaimable kernel caches; it does not guarantee a large decrease in memory usage and may temporarily slow file access.
 
 Press `Ctrl+C` to stop a foreground server. After the first startup, open another terminal and retrieve your access code and local network address:
 

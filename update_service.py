@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 """Bounded background update jobs for Pi Workbench; no shell commands are used."""
 from pathlib import Path
-from urllib.parse import urlsplit
-from urllib.request import Request, urlopen
 import copy
 import hashlib
 import json
@@ -18,8 +16,7 @@ import uuid
 ROOT = Path(__file__).resolve().parent
 DATA = Path.home() / '.local' / 'share' / 'pi-workbench'
 STATE_FILE = DATA / 'update-status.json'
-RAW_BASE = 'https://raw.githubusercontent.com/Liu123215/raspberry-pi-workbench/'
-BRANCH_URL = 'https://api.github.com/repos/Liu123215/raspberry-pi-workbench/git/ref/heads/main'
+REPO_URL = 'https://github.com/Liu123215/raspberry-pi-workbench.git'
 FILES = ('backend.py', 'index.html', 'update_service.py', 'fan_control.py')
 MAX_FILE = 512 * 1024
 MAX_LOG = 12000
@@ -80,10 +77,16 @@ def get_update_status():
         return copy.deepcopy(STATE)
 
 
-def _run(args, timeout):
+def _run(args, timeout, env_override=None):
     """Direct argv only; keep log storage bounded after collecting command output."""
     env = os.environ.copy()
     env['LC_ALL'] = 'C'
+    if env_override is not None:
+        for key, value in env_override.items():
+            if value is None:
+                env.pop(key, None)
+            else:
+                env[key] = value
     with tempfile.TemporaryFile(mode='w+b') as output:
         try:
             result = subprocess.run(args, stdin=subprocess.DEVNULL, stdout=output,
@@ -159,46 +162,48 @@ def _system(action):
 
 
 def _download():
-    # Pin all four downloads to one commit so an in-progress publication cannot
-    # mix backend, frontend, and helper files from different revisions.
-    req = Request(BRANCH_URL, headers={'User-Agent': 'PiWorkbench-Updater/1.0',
-                                      'Accept': 'application/vnd.github+json'})
-    try:
-        with urlopen(req, timeout=20) as response:
-            final = urlsplit(response.geturl())
-            if final.scheme != 'https' or final.hostname != 'api.github.com':
-                raise RuntimeError('更新地址发生非预期的跳转')
-            metadata = response.read(131073)
-        if len(metadata) > 131072:
-            raise RuntimeError('版本信息过大')
-        revision = json.loads(metadata)['object']['sha']
-        if not isinstance(revision, str) or not re.fullmatch(r'[0-9a-f]{40}', revision):
-            raise RuntimeError('版本标识无效')
-    except Exception as exc:
-        raise RuntimeError('无法获取工作台版本信息：' + str(exc)[:160]) from None
-    files = {}
-    for name in FILES:
-        req = Request(RAW_BASE + revision + '/' + name, headers={'User-Agent': 'PiWorkbench-Updater/1.0'})
+    # One shallow checkout supplies every file from the same commit.
+    git = shutil.which('git')
+    if not git:
+        raise RuntimeError('未安装 Git，请先安装 git 软件包')
+    with tempfile.TemporaryDirectory(prefix='pi-workbench-update-') as temp:
+        target = Path(temp) / 'repo'
+        templates = Path(temp) / 'empty-template'
+        templates.mkdir()
+        # Avoid inherited Git config/credential helpers, hooks, prompts, and LFS.
+        clean_git_env = {key: None for key in os.environ if key.startswith('GIT_')}
+        clean_git_env.update({'GIT_CONFIG_NOSYSTEM': '1', 'GIT_CONFIG_GLOBAL': os.devnull,
+                              'GIT_TERMINAL_PROMPT': '0', 'GIT_ASKPASS': '',
+                              'GIT_LFS_SKIP_SMUDGE': '1', 'GIT_TEMPLATE_DIR': str(templates)})
+        command = [git, '-c', 'credential.helper=', '-c', 'core.hooksPath=' + str(templates),
+                   '-c', 'protocol.file.allow=never', 'clone', '--depth', '1',
+                   '--single-branch', '--branch', 'main', '--no-tags',
+                   '--no-recurse-submodules', '--', REPO_URL, str(target)]
         try:
-            with urlopen(req, timeout=20) as response:
-                final = urlsplit(response.geturl())
-                if final.scheme != 'https' or final.hostname != 'raw.githubusercontent.com':
-                    raise RuntimeError('更新地址发生非预期的跳转')
-                content = response.read(MAX_FILE + 1)
-        except Exception as exc:
-            raise RuntimeError('无法下载 ' + name + '：' + str(exc)[:160]) from None
-        if not content or len(content) > MAX_FILE:
-            raise RuntimeError('更新文件为空或超出大小限制：' + name)
-        try:
-            text = content.decode('utf-8-sig')
-            if name.endswith('.py'):
-                compile(text, name, 'exec')
-            elif '<html' not in text.lower() or '</html>' not in text.lower():
-                raise ValueError('不是有效的 HTML 页面')
-        except (UnicodeError, SyntaxError, ValueError) as exc:
-            raise RuntimeError('更新文件格式不正确：' + name + '：' + str(exc)[:160]) from None
-        files[name] = content
-    return files
+            code, output = _run(command, 180, clean_git_env)
+        except RuntimeError:
+            raise RuntimeError('获取更新超时，请检查树莓派的网络连接') from None
+        if code:
+            raise RuntimeError('无法从 GitHub 获取工作台：' + output[-500:])
+        files = {}
+        for name in FILES:
+            path = target / name
+            try:
+                if path.is_symlink() or not path.is_file():
+                    raise ValueError('不是普通文件')
+                with path.open('rb') as f:
+                    content = f.read(MAX_FILE + 1)
+                if not content or len(content) > MAX_FILE:
+                    raise ValueError('文件为空或超出大小限制')
+                text = content.decode('utf-8-sig')
+                if name.endswith('.py'):
+                    compile(text, name, 'exec')
+                elif '<html' not in text.lower() or '</html>' not in text.lower():
+                    raise ValueError('不是有效的 HTML 页面')
+            except (OSError, UnicodeError, SyntaxError, ValueError) as exc:
+                raise RuntimeError('更新文件格式不正确：' + name + '：' + str(exc)[:160]) from None
+            files[name] = content
+        return files
 
 
 def _changed(files):

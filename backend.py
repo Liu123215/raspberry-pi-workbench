@@ -272,10 +272,33 @@ def network_details():
                 v6.append(rendered)
         kind = 'wifi' if (base / 'wireless').exists() else (
             'ethernet' if number(base / 'type') == 1 else 'other')
+        wifi_rx = wifi_tx = wifi_signal = None
+        if kind == 'wifi':
+            try:
+                link = subprocess.run([shutil.which('iw') or '/usr/sbin/iw', 'dev', name, 'link'],
+                                      capture_output=True, text=True, timeout=2, check=True).stdout
+
+                def wifi_rate(direction):
+                    match = re.search(r'^\s*' + direction + r' bitrate:\s*([\d.]+)\s*([KMG])Bit/s\b',
+                                      link, re.MULTILINE | re.IGNORECASE)
+                    if not match:
+                        return None
+                    multiplier = {'k': 0.001, 'm': 1.0, 'g': 1000.0}[match.group(2).lower()]
+                    return round(float(match.group(1)) * multiplier, 3)
+
+                wifi_rx, wifi_tx = wifi_rate('rx'), wifi_rate('tx')
+                signal = re.search(r'^\s*signal:\s*(-?\d+(?:\.\d+)?)\s*dBm\b',
+                                   link, re.MULTILINE | re.IGNORECASE)
+                if signal:
+                    wifi_signal = float(signal.group(1))
+            except (OSError, subprocess.SubprocessError, ValueError):
+                pass
         interfaces.append({'name': name, 'state': info.get('operstate', 'UNKNOWN'),
                            'type': kind, 'mac': info.get('address'), 'mtu': info.get('mtu'),
                            'ipv4': v4, 'ipv6': v6, 'gateway4': gw4.get(name),
                            'gateway6': gw6.get(name), 'link_mbps': speed,
+                           'wifi_rx_mbps': wifi_rx, 'wifi_tx_mbps': wifi_tx,
+                           'wifi_signal_dbm': wifi_signal,
                            'rx_bytes': rx, 'tx_bytes': tx,
                            'rx_bytes_per_sec': rx_rate, 'tx_bytes_per_sec': tx_rate,
                            'is_default': name in gw4 or name in gw6})

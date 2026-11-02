@@ -26,7 +26,7 @@
 
 - 运行 Raspberry Pi OS 的树莓派，需有 Python 3 和 systemd 用户服务；通过浏览器访问，无需树莓派桌面环境。
 - 网络详情依赖系统的 `ip` 命令；部分无线网卡可能无法报告链路协商速率。
-- 风扇功能依赖设备及内核暴露兼容的 `pwm-fan` 接口，手动调节需要非交互式 `sudo` 权限。不支持时页面会显示原因。不同设备尚未逐一测试。
+- 风扇功能依赖设备及内核暴露兼容的 `pwm-fan` 接口，并需要单独安装受限的风扇助手。不支持时页面会显示原因。不同设备尚未逐一测试。
 - 系统软件包更新适用于使用 `apt` 的系统，且需要非交互式 `sudo`。工作台更新需能访问 GitHub。
 - 相机和定时拍照功能需要单独安装和配置光影相机，其余功能可独立使用。
 
@@ -41,6 +41,8 @@ git clone https://github.com/Liu123215/raspberry-pi-workbench.git ~/pi-workbench
 cd ~/pi-workbench
 python3 backend.py
 ```
+
+如需启用风扇控制，请先查看 `pi-workbench-fan` 和安装脚本的内容，再打开另一个终端，在项目目录中运行 `sudo sh install-fan-helper.sh`。安装会请求管理员密码，并仅授予当前用户调用专用风扇助手的免密码权限，不会授予通用免密码 sudo。工作台自更新不会自动更换 root 持有的风扇助手。
 
 终端中按 `Ctrl+C` 可以停止服务。首次启动后，另开终端读取访问码：
 
@@ -104,5 +106,6 @@ systemctl --user stop pi-workbench.service
 - `backend.py`：网页服务、设备状态和自动任务。
 - `index.html`：手机和电脑浏览器界面。
 - `fan_control.py`：兼容风扇的状态读取与控制。
+- `pi-workbench-fan` / `install-fan-helper.sh`：权限受限的风扇助手及安装脚本。
 - `update_service.py`：系统和工作台更新。
 

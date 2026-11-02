@@ -25,7 +25,7 @@ The [CCD Camera](https://github.com/Liu123215/raspberry-pi-ccd-camera) is a sepa
 
 - A Raspberry Pi running Raspberry Pi OS with Python 3 and systemd user services. A desktop is optional; a browser can connect over the local network.
 - `iproute2` for network information; `iw` can provide supported Wi-Fi link data. Some interfaces do not report every value.
-- A compatible `pwm-fan` interface and non-interactive `sudo` for fan control. Other devices have not all been tested; unsupported controls report the reason.
+- A compatible `pwm-fan` interface and the separately installed restricted fan helper. Other devices have not all been tested; unsupported controls report the reason.
 - A system using APT and non-interactive `sudo` for system package updates. Workbench updates require Git and access to GitHub.
 - The separately installed CCD Camera for camera status, gallery, and scheduled capture. The remaining functions can run without it.
 
@@ -40,6 +40,8 @@ git clone https://github.com/Liu123215/raspberry-pi-workbench.git ~/pi-workbench
 cd ~/pi-workbench
 python3 backend.py
 ```
+
+To enable fan control, review `pi-workbench-fan` and the installer, then open another terminal and run `sudo sh install-fan-helper.sh` from the project directory. Installation requires your administrator password and grants the current user passwordless access only to the dedicated fan helper, not general passwordless sudo. Workbench self-updates do not replace the root-owned helper.
 
 Press `Ctrl+C` to stop a foreground server. After the first startup, open another terminal and retrieve your access code and local network address:
 
@@ -107,6 +109,7 @@ Fan percentages represent PWM duty cycle, not a guarantee of physical RPM. Manua
 - `backend.py` — HTTP service, device status, and scheduled tasks.
 - `index.html` — responsive dashboard interface.
 - `fan_control.py` — compatible fan monitoring and control.
+- `pi-workbench-fan` / `install-fan-helper.sh` — restricted fan helper and installer.
 - `update_service.py` — system and workbench updates.
 - `README.md` / `README.en.md` — Chinese and English documentation.
 

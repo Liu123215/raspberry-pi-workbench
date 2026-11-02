@@ -14,6 +14,7 @@ LEVEL_FILES = (Path('/proc/device-tree/cooling_fan/cooling-levels'),
                Path('/sys/firmware/devicetree/base/cooling_fan/cooling-levels'))
 DATA = Path.home() / '.local' / 'share' / 'pi-workbench'
 STATE_FILE = DATA / 'fan-settings.json'
+FAN_HELPER = '/usr/local/libexec/pi-workbench-fan'
 _lock = threading.RLock()
 _wake = threading.Event()
 _started = False
@@ -68,9 +69,9 @@ def _automatic_pwm():
     raise RuntimeError('无法读取风扇自动温控档位')
 
 
-def _has_sudo():
+def _has_fan_permission():
     try:
-        return subprocess.run(['sudo', '-n', 'true'], stdout=subprocess.DEVNULL,
+        return subprocess.run(['sudo', '-n', FAN_HELPER, 'probe'], stdout=subprocess.DEVNULL,
                               stderr=subprocess.DEVNULL, timeout=2).returncode == 0
     except (OSError, subprocess.TimeoutExpired):
         return False
@@ -84,8 +85,10 @@ def _pwm(fan):
 
 
 def _write_pwm(fan, value):
-    # No shell: only the path of the detected pwmfan is ever passed to sudo.
-    proc = subprocess.run(['sudo', '-n', 'tee', str(fan / 'pwm1')], input=str(value) + '\n',
+    # The root-owned helper validates the PWM value and chooses its own sysfs path.
+    if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 255:
+        raise ValueError('无效的风扇控制值')
+    proc = subprocess.run(['sudo', '-n', FAN_HELPER, 'set', str(value)],
                           text=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, timeout=3)
     if proc.returncode != 0:
         raise RuntimeError('写入风扇控制失败，请检查设备权限')
@@ -221,7 +224,7 @@ def read_fan():
             except (OSError, ValueError):
                 pass
             _automatic_pwm()
-            data['controllable'] = _has_sudo()
+            data['controllable'] = _has_fan_permission()
             if not data['controllable']:
                 data['error'] = '无法免交互获得风扇调节权限'
             elif _mode == 'manual':
@@ -242,7 +245,7 @@ def set_fan(data):
     with _lock:
         if _fan() is None:
             raise ValueError('未检测到受支持的风扇')
-        if not _has_sudo():
+        if not _has_fan_permission():
             raise RuntimeError('无法免交互获得风扇调节权限')
         # Ensure the normal automatic cooling control remains available.
         _automatic_pwm()

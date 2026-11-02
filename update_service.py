@@ -111,6 +111,46 @@ def _system_unit_active():
         return False
 
 
+def _read_apt_log(log_path, command_output):
+    """Find the package summary in bounded chunks and retain beginning and end."""
+    pattern = re.compile(rb'(\d+ upgraded,\s*\d+ newly installed,\s*\d+ to remove[^\r\n]{0,160})')
+    summary = b''
+    with log_path.open('rb') as stream:
+        overlap = b''
+        while True:
+            chunk = stream.read(65536)
+            if not chunk:
+                break
+            data = overlap + chunk
+            found = pattern.search(data)
+            if found:
+                summary = found.group(1)
+                break
+            overlap = data[-512:]
+        stream.seek(0, os.SEEK_END)
+        size = stream.tell()
+        prefix = command_output.strip()[-800:]
+        summary_text = summary.decode('utf-8', errors='replace')
+        if summary_text:
+            prefix = (prefix + '\n' if prefix else '') + summary_text
+        if prefix:
+            prefix += '\n'
+        marker = '\n... (middle of log omitted) ...\n'
+        budget = max(0, MAX_LOG - len(prefix))
+        stream.seek(0)
+        if size <= budget:
+            body = stream.read(budget).decode('utf-8', errors='replace')
+        else:
+            available = max(0, budget - len(marker))
+            head_size = available // 2
+            tail_size = available - head_size
+            head = stream.read(head_size).decode('utf-8', errors='replace')
+            stream.seek(-tail_size, os.SEEK_END)
+            tail = stream.read(tail_size).decode('utf-8', errors='replace')
+            body = head + marker + tail
+    return (prefix + body)[:MAX_LOG]
+
+
 def _run_system(args, timeout):
     # A separate user service is not killed if the web server itself restarts.
     unit = 'pi-workbench-system-update-' + uuid.uuid4().hex[:12]
@@ -130,19 +170,16 @@ def _run_system(args, timeout):
         log_path.unlink(missing_ok=True)
         raise RuntimeError('无法启动系统更新服务：' + str(exc)) from None
     try:
-        with log_path.open('rb') as stream:
-            stream.seek(0, os.SEEK_END)
-            stream.seek(max(0, stream.tell() - MAX_LOG))
-            log = stream.read(MAX_LOG).decode('utf-8', errors='replace')
+        log = _read_apt_log(log_path, output)
     except OSError as exc:
         raise RuntimeError('无法读取更新日志：' + str(exc)) from None
     finally:
         log_path.unlink(missing_ok=True)
-    return code, (output + '\n' + log)[-MAX_LOG:]
+    return code, log
 
 
 def _system(action):
-    apt = ['sudo', '-n', 'env', 'DEBIAN_FRONTEND=noninteractive', 'apt-get',
+    apt = ['sudo', '-n', 'env', 'DEBIAN_FRONTEND=noninteractive', 'LC_ALL=C', 'apt-get',
            '-o', 'DPkg::Lock::Timeout=20']
     if action == 'check':
         _set('system', 'running', '正在刷新软件包列表，请稍候')

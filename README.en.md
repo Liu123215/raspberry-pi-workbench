@@ -2,7 +2,38 @@
 
 [中文说明](README.md) · English
 
-A Raspberry Pi dashboard for device and network details, compatible fan control, optional camera access, and scheduled tasks. Open it from a phone or computer on the same trusted network. The interface supports switching between Chinese and English.
+Monitor your Raspberry Pi, inspect network details, and control compatible fans from a phone or computer. The backend uses only the Python standard library, with no third-party Python dependencies. Connect the optional CCD Camera and configure scheduled tasks when needed.
+
+**Use on a trusted local network: the service uses unencrypted HTTP. Do not forward its port to the internet.** See [Privacy and access](#privacy-and-access).
+
+## Preview
+
+These screenshots show the real interface with simulated device data.
+
+![Desktop interface with simulated device data](docs/screenshots/desktop.png)
+
+![Mobile interface with simulated device data](docs/screenshots/mobile.png)
+
+## Quick start
+
+On the Raspberry Pi:
+
+```bash
+sudo apt update
+sudo apt install -y git python3 iproute2 iw
+git clone https://github.com/Liu123215/raspberry-pi-workbench.git ~/pi-workbench
+cd ~/pi-workbench
+python3 backend.py
+```
+
+Press `Ctrl+C` to stop a foreground server. After the first startup, open another terminal and retrieve your access code and local network address:
+
+```bash
+cat ~/.local/share/pi-workbench/access-token
+hostname -I
+```
+
+On the Raspberry Pi, open `http://127.0.0.1:8092/`. On another device in the same trusted network, open `http://<raspberry-pi-local-ip>:8092/` and enter the access code. Keep the code private. Use the language control in the interface to switch between Chinese and English.
 
 ## Features
 
@@ -16,6 +47,15 @@ A Raspberry Pi dashboard for device and network details, compatible fan control,
 - Check and install system package updates and update the workbench from this repository.
 - Schedule availability checks for one website; record state changes. This checks whether the site is reachable, not whether its content has changed.
 - Schedule photos and browse recent images through the separately installed CCD Camera. Both scheduled tasks are disabled by default.
+
+## Compatibility and scope
+
+| Component | Requirements or limitations |
+| --- | --- |
+| Core dashboard | Intended for Raspberry Pi OS; requires Python 3 and `iproute2` for network details. The documentation does not yet contain device-by-device hardware validation. |
+| Fan control | Requires a compatible `pwm-fan` kernel interface and a separately installed restricted helper; support depends on the device. |
+| Camera and scheduled photos | Require the separately installed and configured [CCD Camera](https://github.com/Liu123215/raspberry-pi-ccd-camera). |
+| System updates and background service | System updates require APT and non-interactive `sudo`; the background-service example uses systemd user services. |
 
 ## Privacy and access
 
@@ -33,30 +73,11 @@ The [CCD Camera](https://github.com/Liu123215/raspberry-pi-ccd-camera) is a sepa
 - A system using APT and non-interactive `sudo` for system package updates. Workbench updates require Git and access to GitHub.
 - The separately installed CCD Camera for camera status, gallery, and scheduled capture. The remaining functions can run without it.
 
-## Install and start
-
-On the Raspberry Pi:
-
-```bash
-sudo apt update
-sudo apt install -y git python3 iproute2 iw
-git clone https://github.com/Liu123215/raspberry-pi-workbench.git ~/pi-workbench
-cd ~/pi-workbench
-python3 backend.py
-```
+## Optional: enable privileged helpers
 
 To enable fan control, review `pi-workbench-fan` and the installer, then open another terminal and run `sudo sh install-fan-helper.sh` from the project directory. Installation requires your administrator password and grants the current user passwordless access only to the dedicated fan helper, not general passwordless sudo. Workbench self-updates do not replace the root-owned helper.
 
 To enable memory-cache release, review `pi-workbench-memory` and its installer, then run `sudo sh install-memory-helper.sh` from the project directory. This fixed operation releases reclaimable kernel caches; it does not guarantee a large decrease in memory usage and may temporarily slow file access.
-
-Press `Ctrl+C` to stop a foreground server. After the first startup, open another terminal and retrieve your access code and local network address:
-
-```bash
-cat ~/.local/share/pi-workbench/access-token
-hostname -I
-```
-
-On the Raspberry Pi, open `http://127.0.0.1:8092/`. On another device in the same trusted network, open `http://<raspberry-pi-local-ip>:8092/` and enter the access code. Keep the code private. Use the language control in the interface to switch between Chinese and English.
 
 ## Optional: run in the background
 
@@ -119,3 +140,11 @@ Fan percentages represent PWM duty cycle, not a guarantee of physical RPM. Manua
 - `update_service.py` — system and workbench updates.
 - `README.md` / `README.en.md` — Chinese and English documentation.
 
+
+## Tests
+
+Run `python3 -B -m unittest discover -s tests -v` from the repository directory. These tests do not require Raspberry Pi hardware; hardware-specific features still need testing on a device.
+
+## License
+
+This project is licensed under the [MIT License](LICENSE).

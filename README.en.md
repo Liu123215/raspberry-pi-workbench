@@ -2,38 +2,37 @@
 
 [中文说明](README.md) · English
 
-Monitor your Raspberry Pi, inspect network details, and control compatible fans from a phone or computer. The backend uses only the Python standard library, with no third-party Python dependencies. Connect the optional CCD Camera and configure scheduled tasks when needed.
-
-**Use on a trusted local network: the service uses unencrypted HTTP. Do not forward its port to the internet.** See [Privacy and access](#privacy-and-access).
-
 ## Preview
 
-These screenshots show the real interface with simulated device data.
+These screenshots show the version 1.0 interface with simulated device data; the version 2.0 interface may differ.
 
 ![Desktop interface with simulated device data](docs/screenshots/desktop.png)
 
 ![Mobile interface with simulated device data](docs/screenshots/mobile.png)
 
-## Quick start
+## What's new in 2.0
 
-On the Raspberry Pi:
+- Browse workbench files, downloads and camera folders; create folders, rename, upload (up to 5 MB per file), download and move items to the system trash. Symbolic links are not shown. Trash requires `gio`.
+- Storage analysis, camera and workbench service status and logs, and shutdown/restart controls, subject to system authorization. Power actions are blocked during updates or when recording status cannot be confirmed.
+- Status history, alerts, connectivity checks and an on-demand download speed test that consumes network data.
+- Editable web shortcuts and scheduled backups of a user directory to a separate, writable mounted filesystem. Backups are full snapshots; the workbench must be running and the destination mounted. Monitor available space and verify the results.
 
-```bash
-sudo apt update
-sudo apt install -y git python3 iproute2 iw
-git clone https://github.com/Liu123215/raspberry-pi-workbench.git ~/pi-workbench
-cd ~/pi-workbench
-python3 backend.py
-```
+The 1.0 one-click updater can upgrade to 2.0: the backend includes fallback copies of the new modules when the older updater has not installed them yet. Future updates install the full set of files. Alternatively, use the manual upgrade below and keep a backup.
 
-Press `Ctrl+C` to stop a foreground server. After the first startup, open another terminal and retrieve your access code and local network address:
+For an installation at `~/pi-workbench`, stop recordings and other active tasks, then run these commands on the Raspberry Pi:
 
 ```bash
-cat ~/.local/share/pi-workbench/access-token
-hostname -I
+cp -a ~/pi-workbench ~/pi-workbench-backup-$(date +%Y%m%d-%H%M%S)
+stage=$(mktemp -d)
+git clone --depth 1 https://github.com/Liu123215/raspberry-pi-workbench.git "$stage/source"
+cp "$stage/source/"{workbench_extra.py,extras_v2.py,fan_control.py,update_service.py,index.html,backend.py} ~/pi-workbench/
+systemctl --user restart pi-workbench.service
+systemctl --user status pi-workbench.service --no-pager
 ```
 
-On the Raspberry Pi, open `http://127.0.0.1:8092/`. On another device in the same trusted network, open `http://<raspberry-pi-local-ip>:8092/` and enter the access code. Keep the code private. Use the language control in the interface to switch between Chinese and English.
+For a manually started instance, stop the old process and run `python3 ~/pi-workbench/backend.py` instead of the `systemctl` commands. Keep the backup for rollback; remove the temporary download directory after checking that the new version works.
+
+A Raspberry Pi dashboard for device and network details, compatible fan control, optional camera access, and scheduled tasks. Open it from a phone or computer on the same trusted network. The interface supports switching between Chinese and English.
 
 ## Features
 
@@ -59,7 +58,7 @@ On the Raspberry Pi, open `http://127.0.0.1:8092/`. On another device in the sam
 
 ## Privacy and access
 
-The service listens on all interfaces on port 8092. On first startup it generates a random access code in `~/.local/share/pi-workbench/access-token`, readable only by the service user. Enter the code on the login page; the browser stores a session cookie.
+Version 2.0 listens on the Raspberry Pi loopback interface on port 8092 by default. On first startup it generates a random access code in `~/.local/share/pi-workbench/access-token`, readable only by the service user. Enter the code on the login page; the browser stores a session cookie. On another computer, run `ssh -L 8092:127.0.0.1:8092 user@pi-address`, keep the connection open, and visit `http://127.0.0.1:8092/` in that computer's browser.
 
 **The workbench uses unencrypted HTTP. Use it only on a trusted local network, do not forward its port to the internet, and do not share the access code.** Anyone with the code can use the dashboard's controls, including updates and fan settings.
 
@@ -73,11 +72,30 @@ The [CCD Camera](https://github.com/Liu123215/raspberry-pi-ccd-camera) is a sepa
 - A system using APT and non-interactive `sudo` for system package updates. Workbench updates require Git and access to GitHub.
 - The separately installed CCD Camera for camera status, gallery, and scheduled capture. The remaining functions can run without it.
 
-## Optional: enable privileged helpers
+## Install and start
+
+On the Raspberry Pi:
+
+```bash
+sudo apt update
+sudo apt install -y git python3 iproute2 iw
+git clone https://github.com/Liu123215/raspberry-pi-workbench.git ~/pi-workbench
+cd ~/pi-workbench
+python3 backend.py
+```
 
 To enable fan control, review `pi-workbench-fan` and the installer, then open another terminal and run `sudo sh install-fan-helper.sh` from the project directory. Installation requires your administrator password and grants the current user passwordless access only to the dedicated fan helper, not general passwordless sudo. Workbench self-updates do not replace the root-owned helper.
 
 To enable memory-cache release, review `pi-workbench-memory` and its installer, then run `sudo sh install-memory-helper.sh` from the project directory. This fixed operation releases reclaimable kernel caches; it does not guarantee a large decrease in memory usage and may temporarily slow file access.
+
+Press `Ctrl+C` to stop a foreground server. After the first startup, open another terminal and retrieve your access code and local network address:
+
+```bash
+cat ~/.local/share/pi-workbench/access-token
+hostname -I
+```
+
+On the Raspberry Pi, open `http://127.0.0.1:8092/`. On another computer, first establish the SSH tunnel described above and open `http://127.0.0.1:8092/` in its browser. Keep the code private. Use the language control in the interface to switch between Chinese and English.
 
 ## Optional: run in the background
 
@@ -140,7 +158,6 @@ Fan percentages represent PWM duty cycle, not a guarantee of physical RPM. Manua
 - `update_service.py` — system and workbench updates.
 - `README.md` / `README.en.md` — Chinese and English documentation.
 
-
 ## Tests
 
 Run `python3 -B -m unittest discover -s tests -v` from the repository directory. These tests do not require Raspberry Pi hardware; hardware-specific features still need testing on a device.
@@ -148,3 +165,4 @@ Run `python3 -B -m unittest discover -s tests -v` from the repository directory.
 ## License
 
 This project is licensed under the [MIT License](LICENSE).
+

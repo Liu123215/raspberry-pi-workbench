@@ -19,6 +19,36 @@ import threading
 import time
 import fan_control
 import update_service
+# Compatibility with the original 1.0 updater, which downloads only four files.
+# Its first update to 2.0 may not include these two modules; use the exact
+# embedded release copies until the 2.0 updater installs the standalone files.
+import base64
+import importlib
+import sys
+import types
+import zlib
+_EMBEDDED_MODULES = {
+    'workbench_extra': 'c-qBSTW{RP6@J&Rn5qvXn-#V4t+oIaNUh|dXey)5rGO#`Tyj>+ESJL!hq_b{5W{tB7*^sUc2ZYrBR6&%w6)weshz}8{b$5o>8XFA=gbVbBzLuv(*l)Y>|D?Fn{(m#`1nN@#)3P3NIeoT*9l0|4`_|Vf^laF2b3@SE+tOrk%+BOPFO^_BYe1MkB^U!`JISyK^jg>&z;F;EY3!8D-nK>&yq&OnM>n%tjSr2M2=_$euL=kOE6U%2@hc1=Jef!#v<E?Rp1_G)ZU3%I5zh4xw+RblNqvZpy;tNEy>s|)}f|FCW-MD<Lw3w-4=OO9;gu`YB9lv9KGbbBH?fbCl@cyl8a6Uw8bkPTL}Z^ctdW@=35(Muf6<>#WybfbnfL@5a}%W0hy|wI-`Ha#yr|2K%NE5)Z~nbnzX=-VOY~+1pa*3hGi1Me?KHjHOAFE_Q6+9=u#6ep^vzQn*j~wibZ}z&eSiQQ>5?@92-;erV}Le70wwqjqWEq-Mcq>zx`GB<Lmp+p6u^!_V#uSOWr^ig3yxbJc_YkXR=zEbf~#vX8ZA?(}3+npcz08!?q2Sx^O0PxQM^2Jl`j?Olsa_LBLi>;D_zF1{~ZV@%(T}EfCRi1VGad5rl3V_637QfGpkuTnkR=w5G^u=ydQd$P2iSTXGyy(n$bjAzcQ5J1zh?B)$OJ4qu|^iday`vn3H1o`UZ=0&RsRlZ#EDhsuuDzj(Djo|HH9Lty264~-nJbx={$>eCr+%l)r553cSV>^?vIWViR%Kc*i(J^bij-47mWbAm6EKomI-x>uk1p3+P{dO6T|RNJT(4M+R6C`<RzgOXo4g*TQFQ*R>hV*#ER`X)S|Qy0R~8i+plc5=~C#QZ4Q4JJjK4a(Tt+D-TFf~4uA-=y20Yw3JJJ29}DU+6m)buZ8slvjuY|7e7-To!_Q3C$M;Un`%8(J_$??^|eZ<fKs^+le6VdFHwS@TCxeA{z$~mXxA$CDR#JWB-?UDi%O-5ht+LVV>Xgsh6*Jgx{eXeQtEsrI8?Wm!*A1XrLXqZlD`59-{k988?tQuEL`7k%3M^@npy{q&6r4#Bb`Ea#|y8x;7IyordR-)oEg)D_7?;)fQ?vk$NxKE}#*@foEElH9tL7uh$ng6olZ_LQXOP*N(P+A0#zMT3}z?v*A6PN<@&gzaqs10n4k3s78hk1|w0(BvwpA#ulU}0}eF`fWUc47<oXlF5;;Y@|C-@kdK>^4vz6xGPRKk1Ys48CuK0sP8n~%ozIU8Bq|oCw>MREF35F+2|z5fAN3%hAs4G?l$jZ#ZBlwP8NDO2PNu3lX46%`S$xt!nBLeqy!W6Qd`gk9Uyj&33C($9$!BQ8%zLPp;%xy6T_?igV38#vO2o|TJOPj38-j(I)Af?~bfi=-#bw^{HV0FGakuxUXX&+v>DKSNcb@eAa!<=lg95TTZG04cWWgwju=*H{F}kwY$63KCnhNj$f&Pz}RP)t({eOT`kIHbWQKPbz2IWzjYapsaMW9qrj-<h>0TjT?bWt#KC~hsQWHxyz11~Bn7hWW_L#pcTTu-0=qm-)3&r1QLOi4158-=Wr!Kq+`@~z_^X8HW6S9o}RGyU}*dTHltm2i!6e$!r3f=K%oC5<aE7)YF1azYo+=q|)=oIB%De063Y(fUvp<CmR4)<E(ZmnG79@D=$3;s0dH-rWCoCw>1~y8HD29<@!ePS;Xksow7tPQoDFgi7Vlx=L2X)st%n&#yy|@!F3oyjFbCQm)5t$uw3Q@cf*ZGzS?q?G+A5IG1Z|(CkA!+r9I+d+Q3;?H_IK?`@YWyLE%LA;+U-b#m72WColeH5QZrHC1b7eUB|q6|she4A!qKk<PB?8%O}F0?KPxr$I#_TR|knVtd62+9r~&=}toS4KuGgpk@WhczJ$$0Y&p9RZo|GaTfkmo>R;)(|K0uAup83H4C9oN;K$zp@7CeELbYMO0lT|E|hIl30f*P(T*?m>&>i4Jo19FINX>TI5Mhe%vEuq-#?<B)y1N8ztLC|vVqqXYu3+8_PS8@Fm20k3byCR?ZqTUTooGf3KFw|Q&*Y>UV`bmA((Ii7<slFVH%BPaqQVRK=#l#$~g`;G9;_-AvrGL(Quzuz}!!NuIo*>@*9G!Z_3XP{=`c5Q6gV20$r#caiBhl*Ps#YxFSF*6B8h)ECu{{0xQ*JB#yj~ELP}hwQf0!-uGYxKirQBX(C`t@h}<QVPIJ&7!YD2(cEzy;>zi|IuWvo2)raq`IF1l&jQNC13i%DC5<JU8Z;V~5lPq%*@_eam4H1Hf3>3WlZl>E&aL^0^Uy|2FKkqhlX)7hYYEB_SRCv)lth(YL)HIBb`|(`5iZbk4?_z|3j}ooZlbnasPZo#LUfG`>%<Xzdo#UxzZADsJ%AD@nuRYGE$X%xl}s8N(aC|yq8G;F)Y)95XlVI7pqv?LPfFhxwM!rT{ou=o1~iJNp-(&}MU^#G{7S)DW>x(K(llB^MAMU#Q>T7t*WusP^!fUQsYxgDClQAUer3#C1DSkzwc%G!9KT`O^5db&L0`u+&re-AWepS$mC{>Y$7JUURatYWcQ}3(Gcv5mBPS^>bn9_{_h9!yZ|ke>_BT+arB^@f-F(u0@5;Zwy>;;TX?pEO_p|r9pFUIv28$cXZN4DJ!bw;wYTZYlK~bxi=Iqid+ucWh$T}dEWlWuBYRYUsxjgr?Sy|`FRqMD9jW4dGM27tAEuVRfBoP*kv1V0y>D6~#e7Br7Fw<f1M{=y$Jo$_5-T7zto7>eF>x66OvSO@4prtDMBn%}CFcB>yb1k#IjN~D4jkeR)m)(#5raW@+eCy!;EoGbD=bP#657PHH4<2U~{C9~BEP9bxQ2*~@LD6n17ARe`lfQV@d-iGfcUKSZ-9A1>{0CIWUd8',
+    'extras_v2': 'c-oy=X>Z)d8U8Ln|6#reB%KwtvTVm#XHztaixf^{qf%S6!h)D3XH8Zlhvf`)#L$25^Ukrn)(5fyEOPkX^B&JkimH*VX8%>PUNET^Oy!*}O8k}St<d<}ZJSo6LgAavTfwuU{)oq-630ioR#q(ITF@&itStX-iGG*0Cv3RR%VO*4KH$}T>Dm$>;#T~x6H0pmtjb2z$4AFUKmGaYEn6FwIG2?OBX-7uxRfa`1A0_BZ-sekiqm`9-fl&m=E3pNukSD4fpc$q{P$nsSs0Pb%Xk0ykjx1D_v52X>{vp}Va>@Oyz{Qq(dzh!;iub2_e8%|=&r3zBw-iNR2Uko&loXBG091^c+ep%lcZ@Kbb5FCI*1}GMLeXU(JXv_^|ozgyI}w1WhcyYG*{$|+1q*F7Fsw%?}*X!kQH%tn-y)?AV{@V>+7}ym3SzWPUNk7tz;(FOZokB>Fm)}gTOc^jAZs5f{x{&r-+SS>zMI9>#9bD#sa9QRo9AytF$QAf8nJP5iL&qx5A`~(;P;Gkh)+?`D$ng!q=2M6{DDX-#-eS<nTqdkD>SazR)?Ny`4wSZfW2+VzN3|uup;FRZ|KTtk}(F!2({2R@=9yJ{>Gks5IA|^2!wAWLLuI4XfonB@~iBrhh``MI|bzBgz;Chk<=3%}-#;3U%9mqc{7-ML=p^;<M$kG-fT?K5Cc@0sM{^CEu1}LbhM`q*fv}tpeqzfJ}swFd9B%u@NmCX=%+FlQvyKACfeP7JW47=bT8ulp?dh)5@;S!t>>lJ!7FY`?R->%GN9{*m=Z?opX%W*}(on!5YneL+4-uDPx|diYY?Lt`**`m5HD=c(9Cg3sU4t%Lo3L_e6>Iu1Lk)Cs~(8P5y7CEJMdsGzrhL7JZPUMo*T<<_O|=vvFbFnaJLZBDop4M9v<f`Eku&FIP@v%p0^mlcgW?WJnn874;5}QemKA8l=w|GN(H;(r-qRH|z%%pU*5T<$YrEHJXIL#eKupYZmOVyCMr_+-@`6=UxO^X~nqh*vwdKp{di8@>JHfNOdpaQ2FQBr%|hT!}6Pb)x%5{<~E*wZGnA_(DZJ|l1+4Tdj8_Ya<wshu00T&ee4yvUOeqE`KV#395XKMv^vnTCY@?e>LtM{FG}${F_4Af%e}neXhr8&VlY@$Qx<w0Y*p0gVKsUz30bfb)<;aXtQ57C%YI}R$k3J-kkt>TFnIgWnCP>vK}Caz?Je>fg37_P8dS;-l1&pTYJv=Wuu*f1h!FF)NHKg5=>Kbtc~fM2tzIep&{ITd`g3c<*c~>jh-83Tj`68zC>;=(870;xbiHhvk3N_o9-^5KR=W$Ld7&u2Uiu|s!ovCT`3qWVVwL6sgVy+8Gvtug4e6)9RNNq<Zw+9O(q<+bwhrB_e`~l>D2;42?rihGUAcfUf?fsoh;e5!HHTlWuRnxWXehSv4Wnwe)0g5W7tfVthPf2A6~*RhR*?Jhn5DH9x=$EW0(Q-3yDxbJi9nhkznZt&kK9TkKC&)SzfohDX6&%wHcnAqz%H(N6tWJ(;5;_}!J3yBk%h3b)9VZ59Yu8pCO!oalIAqH;IKtfh=vBpc}yy`pNQeqIE+POck~Rya!K=$<}YuNbYSv!tX^Kw?pH$RlDcPbefc4H8sS9;7a3QyvigdJ282ybGz0cqwPQh$LK>*36zHUB=(<rO1fg7|zq&bZm@0lJu(BK^h=cq#?bYh+%m|FrQg+#{1bU5AS)C<GChzM%nW?mXzBIp}->dVN5d{O8)5uzh;pXR<GFI;o%rQ=Cgjx}d^2`RdhgDIBuU@{qc(w3crz9kb#=NfPO*dm(aNdr;8^zzP`-bWwB#?obIuIkDBcqD=6nMl#@~|6@f1hgZ9kx<RQK;xVl2qGfKtrZHW3MsjEB?^4#LMM5fwXh$CdqgjPOU9ZZ@cE}Bg@kD*jm(-f7u`bmF$2ST@p<Wb|28_fpwHQ&|O~s%q}gIF#aI9ikefoQbtlb7PSVJ15U{ylYD&s!els3H>ykN?AqtJS@ro#YXfX=h6r^8=cP4~&V758-f^;Zd>}=pC|TYKli6+RJ~|muEFK!PRBF=$QW_|!Hs>!o0x0ddh8n-lI-29q9TzI0<KBK+K=NqK*tfP$;MM$f6NlK{G4ar(y)y2ws)Matf{^wUiPIbgdYK8#^jZ~}V2>cQf}s`Nm5w^Sq0RvE*qK8p09HEHv`Qbp*&rHMgP^gL*W?hgT5|}Y2FRq&MLRYkrc+x;lRe4Aoik~?cu47GE~RqbYZ|;IPS0IU2*{k{(0zt!I^H0hbGb>%5W48nCH`0P{@p=b^Yg$Xhump)npQp@lkjChw)<R$<GbP`oxNQy4}l>z%0XdY&Tp72P^=TBg+9J$7q)1l&*4Q!w=f5$F9I~L#as_~7i@_*;MHq)4Prs&-uSmoM1?X4%am&vcgH$h+W4MrS_Qb#I|kg7PJ;ILA{x7W&VE=sW;}fV{2(6w$%K`8Y5Q_HCv*%RD`1cpE-tHY>p}ZnjJt+t{RXV}8)3QD2bkA`=LH-4yEgxR9<Ys@I`ofo5DPy2+OD3C3Kze@tsBa~fX;AR0*}#!kWI5MM3k2_ULHw)4Tj(##7lP{XX)+h10QA~27RAj3ua!&In&EF7<)awWjqaVMD(|waV_sdfAJZ2IyJ|Jow*1KPX2vTon+T1znuK-<m&Wf_n#r8wl}W;IL)KRQ9Rt6Y;U`;sgD&-!nbPJ^qs#q<7u}U-#@(>kl4{j1izV^*%2=O(sn~cbO2k@rLG&|y{*xF{2nlJ3}fG#KUC5)AbV&-4|(L_=pXlr^3EMkvHNBDxEdvFD@wtY=x>J&I-6Vu(mLe^jqBC$912^xrmGy?quw5s(xy(ZD5drE#&JwBjotK+GB1wL$8=7Ek~LxWb6{h}>>#m#PYFGO$e*eQ`)iN}5aiJDh;F%z%t@!+0E}L|nxXN}1aEe?I{gj%&mV{wiC3i%P55em2fhFQ1J~v$w1=g&-Dwmm7Xa?=DxGRz9rO*tT?7Tx3n*bA^Z!QV?kN',
+}
+def _load_release_module(name):
+    try:
+        return importlib.import_module(name)
+    except ModuleNotFoundError as exc:
+        if exc.name != name:
+            raise
+    module = types.ModuleType(name)
+    module.__file__ = '<embedded ' + name + '>'
+    sys.modules[name] = module
+    try:
+        source = zlib.decompress(base64.b85decode(_EMBEDDED_MODULES[name]))
+        exec(compile(source, module.__file__, 'exec'), module.__dict__)
+    except Exception:
+        sys.modules.pop(name, None)
+        raise
+    return module
+workbench_extra = _load_release_module('workbench_extra')
+extras_v2 = _load_release_module('extras_v2')
 
 ROOT = Path(__file__).resolve().parent
 DATA = Path.home() / '.local' / 'share' / 'pi-workbench'
@@ -413,6 +443,11 @@ class Handler(BaseHTTPRequestHandler):
             return False
 
     def do_GET(self):
+        # The service is accessed on the Pi or via an SSH tunnel. Reject other
+        # Host names as protection against DNS rebinding to loopback.
+        if urlsplit('http://' + self.headers.get('Host', '')).hostname not in ('localhost', '127.0.0.1'):
+            self.send_json(403, {'error': '请通过本机或 SSH 隧道访问'})
+            return
         parsed = urlsplit(self.path)
         if parsed.path == '/':
             supplied = parse_qs(parsed.query).get('token', [''])[0]
@@ -433,6 +468,36 @@ class Handler(BaseHTTPRequestHandler):
             return
         if parsed.path == '/api/status':
             self.send_json(200, status())
+        elif parsed.path == '/api/files':
+            try:
+                q = parse_qs(parsed.query)
+                self.send_json(200, workbench_extra.listing(q.get('root', ['files'])[0], q.get('path', [''])[0]))
+            except (ValueError, OSError) as exc:
+                self.send_json(400, {'error': str(exc)})
+        elif parsed.path == '/api/files/download':
+            try:
+                q = parse_qs(parsed.query)
+                p = workbench_extra.resolve(q.get('root', ['files'])[0], q.get('path', [''])[0])
+                if not p.is_file():
+                    raise ValueError('文件不存在')
+                self.send_response(200)
+                self.send_header('Content-Type', 'application/octet-stream')
+                self.send_header('Content-Disposition', "attachment; filename*=UTF-8''" + quote(p.name))
+                self.send_header('Content-Length', str(p.stat().st_size))
+                self.send_header('X-Content-Type-Options', 'nosniff')
+                self.end_headers()
+                with p.open('rb') as f:
+                    shutil.copyfileobj(f, self.wfile, 65536)
+            except (ValueError, OSError) as exc:
+                self.send_json(400, {'error': str(exc)})
+        elif parsed.path in ('/api/storage', '/api/services', '/api/v2/history', '/api/v2/backup', '/api/v2/network', '/api/v2/shortcuts'):
+            try:
+                fn = {'/api/storage': workbench_extra.storage, '/api/services': workbench_extra.services,
+                      '/api/v2/history': extras_v2.get_history, '/api/v2/backup': extras_v2.get_backup,
+                      '/api/v2/network': extras_v2.network_check, '/api/v2/shortcuts': extras_v2.get_shortcuts}[parsed.path]
+                self.send_json(200, fn())
+            except (ValueError, OSError, subprocess.SubprocessError) as exc:
+                self.send_json(400, {'error': str(exc)})
         elif parsed.path == '/api/network':
             self.send_json(200, network_details())
         elif parsed.path == '/api/diagnostics':
@@ -462,11 +527,14 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         global LAST_MEMORY_CLEAN
+        if urlsplit('http://' + self.headers.get('Host', '')).hostname not in ('localhost', '127.0.0.1'):
+            self.send_json(403, {'error': '请通过本机或 SSH 隧道访问'})
+            return
         if not self.authorized():
             self.send_json(401, {'error': '请先登录工作台'})
             return
         path = urlsplit(self.path).path
-        if path not in ('/api/tasks', '/api/fan', '/api/update', '/api/camera/service', '/api/camera/capture', '/api/memory/clear'):
+        if path not in ('/api/tasks', '/api/fan', '/api/update', '/api/camera/service', '/api/camera/capture', '/api/memory/clear', '/api/files/action', '/api/services/action', '/api/power', '/api/v2/backup/config', '/api/v2/backup/run', '/api/v2/shortcuts', '/api/v2/speed'):
             self.send_json(404, {'error': '页面不存在'})
             return
         origin = self.headers.get('Origin', '')
@@ -476,9 +544,19 @@ class Handler(BaseHTTPRequestHandler):
             return
         try:
             length = int(self.headers.get('Content-Length', '0'))
-            if not 0 < length <= 8192:
+            if not 0 < length <= (7 * 1024 * 1024 if path == '/api/files/action' else 8192):
                 raise ValueError('请求数据大小不正确')
             data = json.loads(self.rfile.read(length))
+            if path in ('/api/files/action', '/api/services/action', '/api/power', '/api/v2/backup/config', '/api/v2/backup/run', '/api/v2/shortcuts', '/api/v2/speed'):
+                if path == '/api/files/action': result = workbench_extra.action(data)
+                elif path == '/api/services/action': result = workbench_extra.service_action(data)
+                elif path == '/api/power': result = workbench_extra.power(data, update_service.get_update_status())
+                elif path == '/api/v2/backup/config': result = extras_v2.configure_backup(data)
+                elif path == '/api/v2/backup/run': result = extras_v2.run_backup()
+                elif path == '/api/v2/shortcuts': result = extras_v2.save_shortcuts(data)
+                else: result = extras_v2.speed_test()
+                self.send_json(200, result)
+                return
             if path == '/api/memory/clear':
                 if not MEMORY_CLEAN_LOCK.acquire(blocking=False):
                     raise ValueError('清理正在进行中')
@@ -560,10 +638,12 @@ class Server(ThreadingHTTPServer):
 
 
 if __name__ == '__main__':
-    server = Server(('0.0.0.0', 8092), Handler)
+    workbench_extra.ROOTS['files'].mkdir(exist_ok=True)
+    extras_v2.start(status)
+    server = Server(('127.0.0.1', 8092), Handler)
     fan_control.start_fan_controller()
     threading.Thread(target=worker, daemon=True).start()
-    print('Pi Workbench listening on port 8092', flush=True)
+    print('Pi Workbench listening on 127.0.0.1:8092 (use SSH tunneling for remote access)', flush=True)
     try:
         server.serve_forever()
     except KeyboardInterrupt:

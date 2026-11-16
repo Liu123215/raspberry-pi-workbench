@@ -2,38 +2,37 @@
 
 中文说明 · [English](README.en.md)
 
-在手机或电脑上查看树莓派状态和网络信息，并按设备支持情况控制风扇。后端仅使用 Python 标准库，无需安装 Python 第三方依赖；还可连接独立的光影相机和设置自动任务。
-
-**通过可信局域网使用：服务使用未加密的 HTTP，请勿将端口转发至公网。** 详见[隐私与访问](#隐私与访问)。
-
 ## 界面预览
 
-以下截图展示真实界面，设备数据为模拟数据。
+以下截图展示 1.0 界面，设备数据为模拟数据；2.0 界面可能有所不同。
 
 ![桌面端界面，显示模拟设备数据](docs/screenshots/desktop.png)
 
 ![手机端界面，显示模拟设备数据](docs/screenshots/mobile.png)
 
-## 快速开始
+## 2.0 新功能
 
-在树莓派的终端中执行：
+- 文件管理：浏览工作台文件、下载和相机目录；支持新建文件夹、重命名、上传（单文件最大 5 MB）、下载和移入系统回收站。符号链接不显示。回收站功能需要 `gio`。
+- 存储分析、相机和工作台服务状态与日志，以及需要系统授权的关机、重启操作。正在更新或无法确认相机录像状态时，电源操作会被阻止。
+- 状态历史、异常提示、网络连通性与按需下载测速；测速会消耗网络流量。
+- 常用网址快捷入口；可以配置独立挂载的可写磁盘作为照片或其他用户目录的定时备份目标。备份是完整快照，工作台运行且目标已挂载时才能执行；请留意空间占用并检查备份结果。
 
-```bash
-sudo apt update
-sudo apt install -y git python3 iproute2
-git clone https://github.com/Liu123215/raspberry-pi-workbench.git ~/pi-workbench
-cd ~/pi-workbench
-python3 backend.py
-```
+从 1.0 升级时，可以使用工作台的一键更新。为兼容旧版更新器，2.0 在新增模块尚未单独安装时会加载内置副本；后续更新会安装完整文件。也可以按以下方式手动升级，并保留备份。
 
-终端中按 `Ctrl+C` 可以停止服务。首次启动后，另开终端读取访问码：
+如果按下文示例安装在 `~/pi-workbench`，可在树莓派终端运行以下命令。安装目录不同的话请先调整路径；更新之前请结束正在进行的录像和其他任务。
 
 ```bash
-cat ~/.local/share/pi-workbench/access-token
-hostname -I
+cp -a ~/pi-workbench ~/pi-workbench-backup-$(date +%Y%m%d-%H%M%S)
+stage=$(mktemp -d)
+git clone --depth 1 https://github.com/Liu123215/raspberry-pi-workbench.git "$stage/source"
+cp "$stage/source/"{workbench_extra.py,extras_v2.py,fan_control.py,update_service.py,index.html,backend.py} ~/pi-workbench/
+systemctl --user restart pi-workbench.service
+systemctl --user status pi-workbench.service --no-pager
 ```
 
-在树莓派浏览器打开 `http://127.0.0.1:8092/`，或在同一局域网的其他设备上打开 `http://树莓派的局域网IP:8092/`，输入访问码。访问码应妥善保管。
+如果是手动在终端启动的工作台，请停止旧进程后重新运行 `python3 ~/pi-workbench/backend.py`，不必运行上面的 `systemctl` 命令。备份目录可用于回退；手动检查新版本运行正常后再自行清理临时下载目录。
+
+一个运行在树莓派上的个人工作台：通过电脑或手机浏览设备状态，查看网络信息，按设备支持情况调节风扇，并设置网站状态检查和定时拍照任务。
 
 ## 功能
 
@@ -60,7 +59,7 @@ hostname -I
 
 ## 隐私与访问
 
-服务默认监听所有网络接口的 8092 端口，首次启动会生成随机访问码，保存在 `~/.local/share/pi-workbench/access-token`，文件仅供当前用户读取。打开页面后输入访问码，工作台使用浏览器 Cookie 保存登录状态。
+2.0 默认仅监听树莓派本机的 8092 端口。首次启动会生成随机访问码，保存在 `~/.local/share/pi-workbench/access-token`，文件仅供当前用户读取。打开页面后输入访问码，工作台使用浏览器 Cookie 保存登录状态。
 
 **工作台使用 HTTP，没有传输加密。请只在可信局域网中使用，不要将端口转发至公网，也不要分享访问码。** 网站检查会访问你设置的地址；只有信任的用户才应获得访问码。
 
@@ -74,11 +73,30 @@ hostname -I
 - 系统软件包更新适用于使用 `apt` 的系统，且需要非交互式 `sudo`。工作台更新需能访问 GitHub。
 - 相机和定时拍照功能需要单独安装和配置光影相机，其余功能可独立使用。
 
-## 可选：启用硬件助手
+## 安装与启动
+
+在树莓派的终端中执行：
+
+```bash
+sudo apt update
+sudo apt install -y git python3 iproute2
+git clone https://github.com/Liu123215/raspberry-pi-workbench.git ~/pi-workbench
+cd ~/pi-workbench
+python3 backend.py
+```
 
 如需启用风扇控制，请先查看 `pi-workbench-fan` 和安装脚本的内容，再打开另一个终端，在项目目录中运行 `sudo sh install-fan-helper.sh`。安装会请求管理员密码，并仅授予当前用户调用专用风扇助手的免密码权限，不会授予通用免密码 sudo。工作台自更新不会自动更换 root 持有的风扇助手。
 
 如需启用内存缓存清理，请先检查 `pi-workbench-memory` 及安装脚本，然后在项目目录运行 `sudo sh install-memory-helper.sh`。该助手仅提供释放可回收内核缓存的固定操作；清理不保证能显著降低内存占用，且可能暂时降低文件读取速度。
+
+终端中按 `Ctrl+C` 可以停止服务。首次启动后，另开终端读取访问码：
+
+```bash
+cat ~/.local/share/pi-workbench/access-token
+hostname -I
+```
+
+在树莓派浏览器打开 `http://127.0.0.1:8092/`。从另一台电脑访问时，先在该电脑的终端运行 `ssh -L 8092:127.0.0.1:8092 用户名@树莓派IP` 并保持连接，再在该电脑浏览器打开 `http://127.0.0.1:8092/`。访问码应妥善保管。
 
 ## 可选：后台用户服务
 
@@ -136,7 +154,6 @@ systemctl --user stop pi-workbench.service
 - `pi-workbench-fan` / `install-fan-helper.sh`：权限受限的风扇助手及安装脚本。
 - `update_service.py`：系统和工作台更新。
 
-
 ## 测试
 
 在仓库目录运行 `python3 -B -m unittest discover -s tests -v`。这些测试无需树莓派硬件；硬件相关功能仍需要实机验证。
@@ -144,3 +161,4 @@ systemctl --user stop pi-workbench.service
 ## 许可证
 
 本项目采用 [MIT License](LICENSE)。
+

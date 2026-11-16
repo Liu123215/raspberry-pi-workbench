@@ -17,7 +17,8 @@ ROOT = Path(__file__).resolve().parent
 DATA = Path.home() / '.local' / 'share' / 'pi-workbench'
 STATE_FILE = DATA / 'update-status.json'
 REPO_URL = 'https://github.com/Liu123215/raspberry-pi-workbench.git'
-FILES = ('backend.py', 'index.html', 'update_service.py', 'fan_control.py')
+FILES = ('backend.py', 'index.html', 'update_service.py', 'fan_control.py',
+         'workbench_extra.py', 'extras_v2.py')
 MAX_FILE = 512 * 1024
 MAX_LOG = 12000
 LOCK = threading.RLock()

@@ -58,7 +58,7 @@ A Raspberry Pi dashboard for device and network details, compatible fan control,
 
 ## Privacy and access
 
-Version 2.0 listens on the Raspberry Pi loopback interface on port 8092 by default. On first startup it generates a random access code in `~/.local/share/pi-workbench/access-token`, readable only by the service user. Enter the code on the login page; the browser stores a session cookie. On another computer, run `ssh -L 8092:127.0.0.1:8092 user@pi-address`, keep the connection open, and visit `http://127.0.0.1:8092/` in that computer's browser.
+Version 2.0 listens on the Raspberry Pi loopback interface on port 8092 by default. On first startup it generates a random access code in `~/.local/share/pi-workbench/access-token`, readable only by the service user. Enter the code on the login page; the browser stores a session cookie. On another computer, run `ssh -L 8092:127.0.0.1:8092 -L 8091:127.0.0.1:8091 user@pi-address`, keep the connection open, and visit `http://127.0.0.1:8092/` in that computer's browser. The second forwarded port enables the camera link; the independent camera service is not protected by the workbench access code.
 
 **The workbench uses unencrypted HTTP. Use it only on a trusted local network, do not forward its port to the internet, and do not share the access code.** Anyone with the code can use the dashboard's controls, including updates and fan settings.
 
@@ -165,4 +165,3 @@ Run `python3 -B -m unittest discover -s tests -v` from the repository directory.
 ## License
 
 This project is licensed under the [MIT License](LICENSE).
-

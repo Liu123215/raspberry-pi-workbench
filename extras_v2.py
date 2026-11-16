@@ -73,6 +73,8 @@ def speed_test():
             data = response.read(min(65536, 2000000-size))
             if not data: break
             size += len(data)
+    if size != 2000000:
+        raise ValueError('Speed test ended before the complete sample was downloaded')
     seconds = time.monotonic() - start
     return {'bytes': size, 'seconds': round(seconds, 2), 'download_mbps': round(size * 8 / max(seconds, .001) / 1000000, 2)}
 
@@ -80,6 +82,8 @@ def get_backup():
     with LOCK: return _read('backup.json', {'enabled': False, 'source': str(Path.home() / 'Pictures' / 'CCD Camera'), 'destination': '', 'interval_hours': 24, 'last_success': None, 'last_error': None})
 
 def _validate_backup(source, destination):
+    if not isinstance(source, str) or not source.strip() or not isinstance(destination, str) or not destination.strip():
+        raise ValueError('Choose both a source and a destination folder')
     home = Path.home().resolve(); src = Path(source).expanduser().resolve(strict=True); dst = Path(destination).expanduser().resolve(strict=True)
     if not src.is_dir() or not dst.is_dir() or src == home or home not in src.parents: raise ValueError('Source must be an existing folder inside your home directory')
     if src == dst or src in dst.parents or dst in src.parents: raise ValueError('Source and destination cannot contain each other')
@@ -88,37 +92,54 @@ def _validate_backup(source, destination):
     return src, dst
 
 def configure_backup(data):
-    old = get_backup(); enabled = data.get('enabled', False)
+    enabled = data.get('enabled', False)
     if not isinstance(enabled, bool): raise ValueError('Invalid enabled value')
-    source = str(data.get('source', old['source'])); destination = str(data.get('destination', old['destination']))
-    hours = int(data.get('interval_hours', 24))
-    if not 1 <= hours <= 720: raise ValueError('Backup interval must be 1 to 720 hours')
-    if enabled: _validate_backup(source, destination)
-    old.update(enabled=enabled, source=source, destination=destination, interval_hours=hours)
-    with LOCK: _write('backup.json', old)
-    return old
+    with LOCK:
+        old = get_backup()
+        source = str(data.get('source', old['source'])); destination = str(data.get('destination', old['destination']))
+        hours = int(data.get('interval_hours', 24))
+        if not 1 <= hours <= 720: raise ValueError('Backup interval must be 1 to 720 hours')
+        if enabled: _validate_backup(source, destination)
+        if source != old['source'] or destination != old['destination']:
+            old.update(last_success=None, last_error=None)
+        old.update(enabled=enabled, source=source, destination=destination, interval_hours=hours)
+        _write('backup.json', old)
+        return old
 
 def run_backup():
     if not BACKUP_LOCK.acquire(blocking=False): raise ValueError('Backup already running')
+    cfg = {}
     try:
         cfg = get_backup(); src, dst = _validate_backup(cfg['source'], cfg['destination'])
         name = 'pi-workbench-' + datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S-%fZ')
-        shutil.copytree(src, dst / name, symlinks=True)
-        cfg['last_success'] = time.time(); cfg['last_error'] = None
-        with LOCK: _write('backup.json', cfg)
-        return {'path': str(dst / name), 'last_success': cfg['last_success']}
+        partial = dst / (name + '.partial')
+        shutil.copytree(src, partial, symlinks=True)
+        partial.rename(dst / name)
+        completed = time.time()
+        with LOCK:
+            current = get_backup()
+            if (current.get('source'), current.get('destination')) == (cfg['source'], cfg['destination']):
+                current.update(last_success=completed, last_error=None)
+                _write('backup.json', current)
+        return {'path': str(dst / name), 'last_success': completed}
     except Exception as exc:
-        cfg = get_backup(); cfg['last_error'] = str(exc)
-        with LOCK: _write('backup.json', cfg)
+        with LOCK:
+            current = get_backup()
+            if (current.get('source'), current.get('destination')) == (cfg.get('source'), cfg.get('destination')):
+                current['last_error'] = str(exc)
+                _write('backup.json', current)
         raise
     finally: BACKUP_LOCK.release()
 
 def start(status):
-    def worker():
-        last_attempt = 0
+    def sampler():
         while True:
             try: _sample(status)
             except Exception: pass
+            time.sleep(60)
+    def backup_worker():
+        last_attempt = 0
+        while True:
             try:
                 cfg = get_backup()
                 if cfg['enabled'] and time.time() - max(cfg.get('last_success') or 0, last_attempt) >= cfg['interval_hours'] * 3600:
@@ -126,5 +147,5 @@ def start(status):
                     run_backup()
             except Exception: pass
             time.sleep(60)
-    threading.Thread(target=worker, daemon=True, name='workbench-history').start()
-
+    threading.Thread(target=sampler, daemon=True, name='workbench-history').start()
+    threading.Thread(target=backup_worker, daemon=True, name='workbench-backup').start()

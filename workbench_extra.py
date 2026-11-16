@@ -5,6 +5,7 @@ import shutil
 import subprocess
 from pathlib import Path
 from urllib.request import urlopen
+from urllib.error import URLError
 import json
 
 ROOTS = {'files': Path.home() / 'Workbench Files', 'photos': Path.home() / 'Pictures' / 'CCD Camera', 'downloads': Path.home() / 'Downloads'}
@@ -127,9 +128,22 @@ def check_camera():
             state = json.loads(r.read(8192))
             if not isinstance(state, dict) or 'recording' not in state:
                 raise ValueError('无法确认相机录像状态，请先检查相机')
-            if state['recording']:
+            recording = state['recording']
+            if recording is None or recording is False:
+                return
+            if recording is True or isinstance(recording, dict):
                 raise ValueError('相机正在录像，请先停止')
-    except (OSError, json.JSONDecodeError):
+            raise ValueError('无法确认相机录像状态，请先检查相机')
+    except (OSError, json.JSONDecodeError) as exc:
+        reason = exc.reason if isinstance(exc, URLError) else exc
+        if isinstance(reason, ConnectionRefusedError):
+            try:
+                service = subprocess.run(['systemctl', '--user', 'is-active', 'ccd-camera.service'],
+                                         capture_output=True, text=True, timeout=3)
+                if service.returncode == 3 and service.stdout.strip() in ('inactive', 'failed'):
+                    return
+            except (OSError, subprocess.SubprocessError):
+                pass
         raise ValueError('无法确认相机录像状态，请先检查相机')
 
 def power(data, updates):
@@ -143,4 +157,3 @@ def power(data, updates):
     if p.returncode:
         raise ValueError((p.stderr or '电源操作失败，请检查系统权限')[:300])
     return {'ok': True}
-
